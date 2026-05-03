@@ -7,7 +7,7 @@ Axl Light is a non-invasive Obsidian plugin for reading highlights and sticky no
 Run this in **Terminal**. Replace the path with your Obsidian vault path:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/epiphie/axl-light/main/scripts/install.sh | bash -s -- "$HOME/Documents/Obsidian Vault"
+curl -fsSL https://raw.githubusercontent.com/little-pond/axl-light/main/scripts/install.sh | bash -s -- "$HOME/Documents/Obsidian Vault"
 ```
 
 Then restart Obsidian, open `Settings -> Community plugins`, and enable `Axl Light`.
@@ -21,13 +21,13 @@ Then restart Obsidian, open `Settings -> Community plugins`, and enable `Axl Lig
 Run this in **Terminal**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/epiphie/axl-light/main/scripts/install.sh | bash -s -- "/path/to/your/Obsidian Vault"
+curl -fsSL https://raw.githubusercontent.com/little-pond/axl-light/main/scripts/install.sh | bash -s -- "/path/to/your/Obsidian Vault"
 ```
 
 You can also install a specific release version:
 
 ```bash
-AXL_LIGHT_VERSION="0.1.0" curl -fsSL https://raw.githubusercontent.com/epiphie/axl-light/main/scripts/install.sh | bash -s -- "/path/to/your/Obsidian Vault"
+AXL_LIGHT_VERSION="0.1.0" curl -fsSL https://raw.githubusercontent.com/little-pond/axl-light/main/scripts/install.sh | bash -s -- "/path/to/your/Obsidian Vault"
 ```
 
 This downloads `main.js`, `manifest.json`, and `styles.css` into:
@@ -38,7 +38,7 @@ This downloads `main.js`, `manifest.json`, and `styles.css` into:
 
 ### Option 2: Manual install
 
-1. Go to the latest release: https://github.com/epiphie/axl-light/releases/latest
+1. Go to the latest release: https://github.com/little-pond/axl-light/releases/latest
 2. Download these three files from `Assets`:
 
 - `main.js`
@@ -66,7 +66,7 @@ If you use the Obsidian BRAT plugin:
 3. Paste this repository URL:
 
 ```text
-https://github.com/epiphie/axl-light
+https://github.com/little-pond/axl-light
 ```
 
 4. Enable `Axl Light` in `Settings -> Community plugins`.

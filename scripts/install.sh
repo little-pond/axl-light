@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="epiphie/axl-light"
+REPO="little-pond/axl-light"
 PLUGIN_ID="axl-light"
 VERSION="${AXL_LIGHT_VERSION:-latest}"
 VAULT_PATH="${1:-${OBSIDIAN_VAULT:-}}"
@@ -11,7 +11,7 @@ if [[ -z "${VAULT_PATH}" ]]; then
 Axl Light installer
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/epiphie/axl-light/main/scripts/install.sh | bash -s -- "/path/to/your/Obsidian Vault"
+  curl -fsSL https://raw.githubusercontent.com/little-pond/axl-light/main/scripts/install.sh | bash -s -- "/path/to/your/Obsidian Vault"
 
 Or:
   OBSIDIAN_VAULT="/path/to/your/Obsidian Vault" bash install.sh
