@@ -5,6 +5,7 @@
 anchor/textAnchor.ts: 文本锚点生成与恢复，维护 offset、selectedText、prefix、suffix 的定位语义。
 anchor/fuzzyMatch.ts: 模糊匹配恢复器，处理文件轻微改动后的锚点迁移。
 editor/highlightExtension.ts: CodeMirror 6 高亮装饰层，使用 Decoration.mark 非侵入式绘制。
+editor/readingViewHighlight.ts: Reading View DOM 高亮层，使用延迟渲染、MutationObserver 与 fuzzy matching 兼容移动端。
 editor/selectionToolbar.ts: 选中文本后的浮动工具栏，提供颜色、便签、复制和总览入口。
 editor/stickyNoteWidget.ts: 编辑器旁便利贴叠加层，负责 DOM 卡片、滚动同步与连接线。
 pdf/pdfAnnotationLayer.ts: PDF 注释控制器，使用页码与矩形百分比坐标绘制非侵入式高亮和右侧便签栏。

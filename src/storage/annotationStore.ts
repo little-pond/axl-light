@@ -19,7 +19,7 @@ import {
 } from "./types";
 
 const STORE_DIR = ".obsidian-annotations";
-const INDEX_PATH = `${STORE_DIR}/index.json`;
+const INDEX_PATH = normalizePath(`${STORE_DIR}/index.json`);
 
 export class AnnotationStore {
   private readonly documents = new Map<string, FileAnnotationDocument>();
@@ -38,29 +38,32 @@ export class AnnotationStore {
   }
 
   getCachedDocument(filePath: string): FileAnnotationDocument | null {
-    return this.documents.get(filePath) ?? null;
+    return this.documents.get(this.toCacheKey(filePath)) ?? null;
   }
 
   async getDocument(file: TFile): Promise<FileAnnotationDocument> {
-    const cached = this.documents.get(file.path);
+    const filePath = this.normalizeVaultPath(file.path);
+    const cacheKey = this.toCacheKey(filePath);
+    const cached = this.documents.get(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const sidecarPath = this.toSidecarPath(file.path);
+    const sidecarPath = this.toSidecarPath(filePath);
     const fallback = await this.createEmptyDocument(file);
     const document = await this.readJson<FileAnnotationDocument>(sidecarPath, fallback);
-    this.documents.set(file.path, this.normalizeDocument(document, file.path));
-    return this.documents.get(file.path)!;
+    this.documents.set(cacheKey, this.normalizeDocument(document, filePath));
+    return this.documents.get(cacheKey)!;
   }
 
   async saveDocument(document: FileAnnotationDocument): Promise<void> {
-    const sidecarPath = this.toSidecarPath(document.filePath);
-    const normalized = this.normalizeDocument(document, document.filePath);
+    const filePath = this.normalizeVaultPath(document.filePath);
+    const sidecarPath = this.toSidecarPath(filePath);
+    const normalized = this.normalizeDocument(document, filePath);
     await this.ensureStoreDir();
     await this.app.vault.adapter.write(sidecarPath, JSON.stringify(normalized, null, 2));
 
-    this.documents.set(normalized.filePath, normalized);
+    this.documents.set(this.toCacheKey(normalized.filePath), normalized);
     this.index.files[normalized.filePath] = this.toIndexEntry(normalized, sidecarPath);
     await this.writeIndex();
     this.changeVersion += 1;
@@ -134,7 +137,8 @@ export class AnnotationStore {
   }
 
   async migrateFilePath(oldPath: string, file: TFile): Promise<void> {
-    const oldSidecar = this.toSidecarPath(oldPath);
+    const normalizedOldPath = this.normalizeVaultPath(oldPath);
+    const oldSidecar = this.toSidecarPath(normalizedOldPath);
     const oldDocument = await this.readJson<FileAnnotationDocument | null>(oldSidecar, null);
     if (!oldDocument) {
       return;
@@ -149,9 +153,9 @@ export class AnnotationStore {
 
     await this.saveDocument(nextDocument);
     await this.deleteIfExists(oldSidecar);
-    delete this.index.files[oldPath];
+    delete this.index.files[normalizedOldPath];
     await this.writeIndex();
-    this.documents.delete(oldPath);
+    this.documents.delete(this.toCacheKey(normalizedOldPath));
   }
 
   async exportNotes(file: TFile): Promise<TFile> {
@@ -224,16 +228,17 @@ export class AnnotationStore {
   }
 
   toSidecarPath(filePath: string): string {
-    const safeName = filePath
-      .split("/")
+    const safeName = this.normalizeVaultPath(filePath)
+      .toLowerCase()
+      .split(/[\\/]/)
       .map((part) => encodeURIComponent(part))
       .join("__");
-    return `${STORE_DIR}/${safeName}.json`;
+    return normalizePath(`${STORE_DIR}/${safeName}.json`);
   }
 
   private async createEmptyDocument(file: TFile): Promise<FileAnnotationDocument> {
     return {
-      filePath: file.path,
+      filePath: this.normalizeVaultPath(file.path),
       fileHash: await this.hashFile(file),
       lastModified: new Date().toISOString(),
       highlights: [],
@@ -267,8 +272,9 @@ export class AnnotationStore {
   }
 
   private async ensureStoreDir(): Promise<void> {
-    if (!(await this.app.vault.adapter.exists(STORE_DIR))) {
-      await this.app.vault.adapter.mkdir(STORE_DIR);
+    const storeDir = normalizePath(STORE_DIR);
+    if (!(await this.app.vault.adapter.exists(storeDir))) {
+      await this.app.vault.adapter.mkdir(storeDir);
     }
   }
 
@@ -278,21 +284,31 @@ export class AnnotationStore {
   }
 
   private async readJson<T>(path: string, fallback: T): Promise<T> {
-    if (!(await this.app.vault.adapter.exists(path))) {
+    const normalizedPath = normalizePath(path);
+    if (!(await this.app.vault.adapter.exists(normalizedPath))) {
       return fallback;
     }
 
     try {
-      return JSON.parse(await this.app.vault.adapter.read(path)) as T;
+      return JSON.parse(await this.app.vault.adapter.read(normalizedPath)) as T;
     } catch {
       return fallback;
     }
   }
 
   private async deleteIfExists(path: string): Promise<void> {
-    if (await this.app.vault.adapter.exists(path)) {
-      await this.app.vault.adapter.remove(path);
+    const normalizedPath = normalizePath(path);
+    if (await this.app.vault.adapter.exists(normalizedPath)) {
+      await this.app.vault.adapter.remove(normalizedPath);
     }
+  }
+
+  private normalizeVaultPath(filePath: string): string {
+    return normalizePath(filePath);
+  }
+
+  private toCacheKey(filePath: string): string {
+    return this.normalizeVaultPath(filePath).toLowerCase();
   }
 
   private async hashString(content: string): Promise<string> {

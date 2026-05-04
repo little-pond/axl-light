@@ -5,12 +5,56 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 AGENTS.md
  */
 
-import { ItemView, MarkdownView, Notice, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderer, MarkdownView, Notice, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 
 import type OverlayAnnotationsPlugin from "../../main";
-import { ANNOTATION_COLORS, AnnotationColor, AnnotationSortMode } from "../storage/types";
+import {
+  ANNOTATION_COLORS,
+  AnnotationColor,
+  AnnotationSortMode,
+  CommentAnnotation,
+  PdfCommentAnnotation,
+} from "../storage/types";
 
 export const ANNOTATION_SIDEBAR_VIEW = "axl-light-sidebar";
+
+type SidebarRow =
+  | {
+      id: string;
+      type: "highlight" | "pdf highlight";
+      color: AnnotationColor;
+      text: string;
+      content: "";
+      createdAt: string;
+      startOffset: number;
+      pageNumber: number | null;
+      orphaned?: boolean;
+      comment: null;
+    }
+  | {
+      id: string;
+      type: "note";
+      color: AnnotationColor;
+      text: string;
+      content: string;
+      createdAt: string;
+      startOffset: number;
+      pageNumber: null;
+      orphaned?: boolean;
+      comment: CommentAnnotation;
+    }
+  | {
+      id: string;
+      type: "pdf note";
+      color: AnnotationColor;
+      text: string;
+      content: string;
+      createdAt: string;
+      startOffset: number;
+      pageNumber: number;
+      orphaned?: boolean;
+      comment: PdfCommentAnnotation;
+    };
 
 export class AnnotationSidebarView extends ItemView {
   private query = "";
@@ -52,17 +96,18 @@ export class AnnotationSidebarView extends ItemView {
     }
 
     const document = await this.plugin.store.getDocument(file);
-    const rows = [
+    const rawRows: SidebarRow[] = [
       ...document.highlights.map((item) => ({
         id: item.id,
         type: "highlight" as const,
         color: item.color,
         text: item.anchor.selectedText,
-        content: "",
+        content: "" as const,
         createdAt: item.createdAt,
         startOffset: item.anchor.startOffset,
         pageNumber: null,
         orphaned: item.orphaned,
+        comment: null,
       })),
       ...document.comments.map((item) => ({
         id: item.id,
@@ -74,17 +119,19 @@ export class AnnotationSidebarView extends ItemView {
         startOffset: item.anchor.startOffset,
         pageNumber: null,
         orphaned: item.orphaned,
+        comment: item,
       })),
       ...document.pdfHighlights.map((item) => ({
         id: item.id,
         type: "pdf highlight" as const,
         color: item.color,
         text: item.anchor.selectedText,
-        content: "",
+        content: "" as const,
         createdAt: item.createdAt,
         startOffset: Number.MAX_SAFE_INTEGER,
         pageNumber: item.anchor.pageNumber,
         orphaned: item.orphaned,
+        comment: null,
       })),
       ...document.pdfComments.map((item) => ({
         id: item.id,
@@ -96,8 +143,10 @@ export class AnnotationSidebarView extends ItemView {
         startOffset: Number.MAX_SAFE_INTEGER,
         pageNumber: item.anchor.pageNumber,
         orphaned: item.orphaned,
+        comment: item,
       })),
-    ]
+    ];
+    const rows = rawRows
       .filter((row) => this.color === "all" || row.color === this.color)
       .filter((row) => {
         const haystack = `${row.text} ${row.content}`.toLowerCase();
@@ -131,10 +180,16 @@ export class AnnotationSidebarView extends ItemView {
       meta.createSpan({ text: new Date(row.createdAt).toLocaleString() });
       item.createDiv({ cls: "oa-sidebar-quote", text: row.text });
       if (row.content) {
-        item.createDiv({ cls: "oa-sidebar-content", text: row.content });
+        const content = item.createDiv({ cls: "oa-sidebar-content" });
+        MarkdownRenderer.render(this.app, row.content, content, file.path, this);
       }
 
       const actions = item.createDiv({ cls: "oa-sidebar-actions" });
+      if (row.comment) {
+        const edit = actions.createEl("button", { cls: "oa-icon-button", attr: { type: "button", title: "Edit note" } });
+        setIcon(edit, "pencil");
+        edit.addEventListener("click", () => this.renderInlineEditor(item, file, row));
+      }
       const jump = actions.createEl("button", { text: "Jump", attr: { type: "button" } });
       jump.addEventListener("click", () => this.jumpTo(file, row.startOffset, row.pageNumber));
       const remove = actions.createEl("button", { text: "Delete", attr: { type: "button" } });
@@ -144,6 +199,59 @@ export class AnnotationSidebarView extends ItemView {
         await this.plugin.refreshAnnotations();
       });
     }
+  }
+
+  private renderInlineEditor(item: HTMLElement, file: TFile, row: SidebarRow): void {
+    if (!row.comment) {
+      return;
+    }
+
+    item.empty();
+    const meta = item.createDiv({ cls: "oa-sidebar-meta" });
+    meta.createSpan({ cls: "oa-color-chip", text: row.color, attr: { "data-oa-color": row.color } });
+    meta.createSpan({ text: row.type });
+    meta.createSpan({ text: "editing" });
+    item.createDiv({ cls: "oa-sidebar-quote", text: row.text });
+
+    const editor = item.createEl("textarea", {
+      cls: "oa-sidebar-editor",
+      attr: { rows: "6", placeholder: "Edit note..." },
+    });
+    editor.value = row.comment.content;
+    editor.focus();
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+
+    const actions = item.createDiv({ cls: "oa-sidebar-actions" });
+    const save = actions.createEl("button", { text: "Save", cls: "mod-cta", attr: { type: "button" } });
+    const cancel = actions.createEl("button", { text: "Cancel", attr: { type: "button" } });
+
+    const saveContent = async (): Promise<void> => {
+      const next = {
+        ...row.comment,
+        content: editor.value,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (row.type === "pdf note") {
+        await this.plugin.store.updatePdfComment(file, next as PdfCommentAnnotation);
+      } else {
+        await this.plugin.store.updateComment(file, next as CommentAnnotation);
+      }
+      await this.plugin.refreshAnnotations();
+    };
+
+    save.addEventListener("click", () => {
+      void saveContent();
+    });
+    cancel.addEventListener("click", () => {
+      void this.render();
+    });
+    editor.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        void saveContent();
+      }
+    });
   }
 
   private renderControls(container: Element, file: TFile | null): void {

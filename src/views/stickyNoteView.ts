@@ -34,6 +34,12 @@ export function renderStickyNoteCard(container: HTMLElement, options: StickyNote
   color.setAttr("aria-hidden", "true");
   header.createSpan({ cls: "oa-sticky-author", text: options.comment.author });
 
+  const edit = header.createEl("button", {
+    cls: "oa-icon-button",
+    attr: { type: "button", title: "Edit note" },
+  });
+  setIcon(edit, "pencil");
+
   const collapse = header.createEl("button", {
     cls: "oa-icon-button",
     attr: { type: "button", title: options.comment.collapsed ? "Expand" : "Collapse" },
@@ -53,15 +59,51 @@ export function renderStickyNoteCard(container: HTMLElement, options: StickyNote
     return card;
   }
 
-  const body = card.createDiv({ cls: "oa-sticky-body" });
-  MarkdownRenderer.render(options.app, options.comment.content, body, options.sourcePath, options.component);
-
-  const editor = card.createEl("textarea", {
-    cls: "oa-sticky-editor",
-    attr: { rows: "4", placeholder: "Write a Markdown note..." },
-  });
-  editor.value = options.comment.content;
-  editor.addEventListener("change", () => options.onUpdate(options.comment, editor.value));
+  card.createDiv({ cls: "oa-sticky-excerpt", text: options.comment.anchor.selectedText });
+  const content = card.createDiv({ cls: "oa-sticky-content" });
+  renderDisplayMode(content, options);
+  edit.addEventListener("click", () => renderEditMode(content, options));
 
   return card;
+}
+
+function renderDisplayMode(container: HTMLElement, options: StickyNoteCardOptions): void {
+  container.empty();
+  const body = container.createDiv({ cls: "oa-sticky-body" });
+  MarkdownRenderer.render(options.app, options.comment.content, body, options.sourcePath, options.component);
+}
+
+function renderEditMode(container: HTMLElement, options: StickyNoteCardOptions): void {
+  container.empty();
+  const editor = container.createEl("textarea", {
+    cls: "oa-sticky-editor",
+    attr: { rows: "5", placeholder: "Write a Markdown note..." },
+  });
+  editor.value = options.comment.content;
+  editor.focus();
+  editor.setSelectionRange(editor.value.length, editor.value.length);
+
+  const actions = container.createDiv({ cls: "oa-sticky-edit-actions" });
+  const save = actions.createEl("button", { text: "Save", cls: "mod-cta", attr: { type: "button" } });
+  const cancel = actions.createEl("button", { text: "Cancel", attr: { type: "button" } });
+
+  const saveContent = (): void => {
+    options.onUpdate(options.comment, editor.value);
+    renderDisplayMode(container, {
+      ...options,
+      comment: {
+        ...options.comment,
+        content: editor.value,
+      },
+    });
+  };
+
+  save.addEventListener("click", saveContent);
+  cancel.addEventListener("click", () => renderDisplayMode(container, options));
+  editor.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      saveContent();
+    }
+  });
 }

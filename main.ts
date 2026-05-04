@@ -9,6 +9,7 @@ import { Editor, MarkdownPostProcessorContext, MarkdownView, Modal, Notice, Plug
 
 import { createTextAnchor, relocateDocumentAnchors } from "./src/anchor/textAnchor";
 import { createHighlightExtension } from "./src/editor/highlightExtension";
+import { installReadingViewHighlights } from "./src/editor/readingViewHighlight";
 import { SelectionToolbar } from "./src/editor/selectionToolbar";
 import { createStickyNoteExtension } from "./src/editor/stickyNoteWidget";
 import { PdfAnnotationLayer } from "./src/pdf/pdfAnnotationLayer";
@@ -33,6 +34,7 @@ export default class OverlayAnnotationsPlugin extends Plugin {
   private popover!: AnnotationPopover;
   private pdfLayer!: PdfAnnotationLayer;
   private lastSelection: SelectionSnapshot | null = null;
+  private renameMigrationTimer: number | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -110,6 +112,9 @@ export default class OverlayAnnotationsPlugin extends Plugin {
   }
 
   onunload(): void {
+    if (this.renameMigrationTimer !== null) {
+      window.clearTimeout(this.renameMigrationTimer);
+    }
     this.toolbar?.destroy();
     this.popover?.destroy();
     this.app.workspace.detachLeavesOfType(ANNOTATION_SIDEBAR_VIEW);
@@ -207,10 +212,19 @@ export default class OverlayAnnotationsPlugin extends Plugin {
 
     this.registerEvent(
       this.app.vault.on("rename", async (file, oldPath) => {
-        if (this.settings.migrateOnRename && file instanceof TFile && file.extension === "md") {
+        if (!this.settings.migrateOnRename || !(file instanceof TFile) || file.extension !== "md") {
+          return;
+        }
+
+        if (this.renameMigrationTimer !== null) {
+          window.clearTimeout(this.renameMigrationTimer);
+        }
+
+        this.renameMigrationTimer = window.setTimeout(async () => {
           await this.store.migrateFilePath(oldPath, file);
           await this.refreshAnnotations();
-        }
+          this.renameMigrationTimer = null;
+        }, 100);
       }),
     );
 
@@ -418,9 +432,7 @@ export default class OverlayAnnotationsPlugin extends Plugin {
 
     const document = await this.store.getDocument(file);
     const marks = [...document.highlights, ...document.comments].filter((item) => !item.orphaned);
-    for (const mark of marks) {
-      wrapRenderedText(element, mark.anchor.selectedText, mark.color, mark.id);
-    }
+    installReadingViewHighlights({ root: element, context, marks });
   }
 }
 
@@ -462,30 +474,5 @@ class CommentModal extends Modal {
 
   onClose(): void {
     this.resolve?.(this.value);
-  }
-}
-
-function wrapRenderedText(root: HTMLElement, selectedText: string, color: AnnotationColor, id: string): void {
-  if (!selectedText) {
-    return;
-  }
-
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode() as Text | null;
-  while (node) {
-    const index = node.textContent?.indexOf(selectedText) ?? -1;
-    if (index >= 0 && node.parentElement && !node.parentElement.closest(".oa-reading-highlight")) {
-      const before = node.splitText(index);
-      const after = before.splitText(selectedText.length);
-      const mark = document.createElement("mark");
-      mark.className = "oa-reading-highlight oa-highlight";
-      mark.dataset.oaColor = color;
-      mark.dataset.oaId = id;
-      mark.tabIndex = 0;
-      before.parentNode?.insertBefore(mark, after);
-      mark.appendChild(before);
-      return;
-    }
-    node = walker.nextNode() as Text | null;
   }
 }

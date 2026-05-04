@@ -11,44 +11,47 @@ import { findBestFuzzyMatch } from "./fuzzyMatch";
 const CONTEXT_LENGTH = 20;
 
 export function createTextAnchor(source: string, startOffset: number, endOffset: number): TextAnchor {
-  const start = Math.max(0, Math.min(startOffset, source.length));
-  const end = Math.max(start, Math.min(endOffset, source.length));
+  const normalizedSource = normalizeLineEndings(source);
+  const start = Math.max(0, Math.min(startOffset, normalizedSource.length));
+  const end = Math.max(start, Math.min(endOffset, normalizedSource.length));
 
   return {
     startOffset: start,
     endOffset: end,
-    selectedText: source.slice(start, end),
-    prefix: source.slice(Math.max(0, start - CONTEXT_LENGTH), start),
-    suffix: source.slice(end, Math.min(source.length, end + CONTEXT_LENGTH)),
+    selectedText: normalizedSource.slice(start, end),
+    prefix: normalizedSource.slice(Math.max(0, start - CONTEXT_LENGTH), start),
+    suffix: normalizedSource.slice(end, Math.min(normalizedSource.length, end + CONTEXT_LENGTH)),
   };
 }
 
 export function resolveTextAnchor(source: string, anchor: TextAnchor): LocatedAnchor {
-  const direct = source.slice(anchor.startOffset, anchor.endOffset);
-  if (direct === anchor.selectedText) {
+  const normalizedSource = normalizeLineEndings(source);
+  const normalizedAnchor = normalizeAnchor(anchor);
+  const direct = normalizedSource.slice(normalizedAnchor.startOffset, normalizedAnchor.endOffset);
+  if (direct === normalizedAnchor.selectedText) {
     return {
-      anchor,
+      anchor: normalizedAnchor,
       orphaned: false,
       confidence: 1,
     };
   }
 
-  const contextual = findContextualMatch(source, anchor);
+  const contextual = findContextualMatch(normalizedSource, normalizedAnchor);
   if (contextual) {
     return contextual;
   }
 
-  const fuzzy = findBestFuzzyMatch(source, anchor.selectedText, anchor.startOffset);
+  const fuzzy = findBestFuzzyMatch(normalizedSource, normalizedAnchor.selectedText, normalizedAnchor.startOffset);
   if (fuzzy) {
     return {
-      anchor: createTextAnchor(source, fuzzy.startOffset, fuzzy.endOffset),
+      anchor: createTextAnchor(normalizedSource, fuzzy.startOffset, fuzzy.endOffset),
       orphaned: fuzzy.confidence < 0.55,
       confidence: fuzzy.confidence,
     };
   }
 
   return {
-    anchor,
+    anchor: normalizedAnchor,
     orphaned: true,
     confidence: 0,
   };
@@ -122,4 +125,17 @@ function contextScore(expected: string, actual: string): number {
   }
 
   return shared / Math.max(expected.length, actual.length);
+}
+
+function normalizeAnchor(anchor: TextAnchor): TextAnchor {
+  return {
+    ...anchor,
+    selectedText: normalizeLineEndings(anchor.selectedText),
+    prefix: normalizeLineEndings(anchor.prefix),
+    suffix: normalizeLineEndings(anchor.suffix),
+  };
+}
+
+function normalizeLineEndings(content: string): string {
+  return content.replace(/\r\n/g, "\n");
 }
